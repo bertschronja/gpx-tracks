@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[43]:
-
-
 import pandas as pd
-from datetime import datetime
 import os
 import re
 import folium
@@ -16,240 +12,13 @@ import math
 from collections import defaultdict
 import gc
 from pathlib import Path
-from geopy.distance import geodesic
 from IPython.display import IFrame, display
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
 
-
-
-
-def cleanup_old_backups(directory, max_files_to_keep=10):
-    """
-    Deletes backup files older than the most recent 'max_files_to_keep' files.
-    
-    Args:
-    - directory (str): The directory where backup files are stored.
-    - max_files_to_keep (int): Maximum number of recent files to keep.
-    """
-    # List to store files with their modification times
-    files_with_times = []
-
-    # Scan the directory and get files with their last modification times
-    for filename in os.listdir(directory):
-        file_path = os.path.join(directory, filename)
-        if os.path.isfile(file_path):
-            # Get the last modification time of the file
-            mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-            files_with_times.append((mod_time, filename))
-    
-    # Sort files by modification time (oldest first)
-    files_with_times.sort(key=lambda x: x[0])
-    
-    # Determine files to delete (all but the latest 'max_files_to_keep')
-    files_to_delete = files_with_times[:-max_files_to_keep]
-
-    # Print the number of files that will be deleted
-    print(f"{len(files_to_delete)} files will be deleted")
-
-    # Delete the old files
-    for _, file in files_to_delete:
-        file_path = os.path.join(directory, file)
-        try:
-            os.remove(file_path)
-            print(f"Deleted file: {file_path}")
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}")
-
-
-# Function to remove ".gz" if the filename ends with ".gpx.gz"
-def remove_gz(filename):
-    if filename.endswith('.gpx.gz'):
-        return filename[:-3]  # Remove the ".gz" part
-    return filename
-
-
-
-
-def gz_extract(directory):
-    extension = ".gz"
-    os.chdir(directory)
-    for item in os.listdir(directory): # loop through items in dir
-      if item.endswith(extension): # check for ".gz" extension
-          gz_name = os.path.abspath(item) # get full path of files
-          file_name = (os.path.basename(gz_name)).rsplit('.',1)[0] #get file name for file within
-          with gzip.open(gz_name,"rb") as f_in, open(file_name,"wb") as f_out:
-              shutil.copyfileobj(f_in, f_out)
-          os.remove(gz_name) # delete zipped file
-
-
-
-
-'''def process_gpx_to_df(file_path):
-    gpx = gpxpy.parse(open(file_path))
-    print('Parsing the following file: ' + file_path)
-    
-    # Create data frame
-    track = gpx.tracks[0]
-    segment = track.segments[0]
-    activity_type = track.type
-    
-    # Load the data into a Pandas dataframe (by way of a list)
-    data = []
-    for point_idx, point in enumerate(segment.points):
-        data.append([
-            point.longitude, 
-            point.latitude,
-            point.elevation,
-            point.time,
-            segment.get_speed(point_idx)
-        ])
-    
-    columns = ['Longitude', 'Latitude', 'Altitude', 'Time', 'Speed']
-    gpx_df = pd.DataFrame(data, columns=columns)
-
-    # Create points tuples to display on map
-    points = []
-    for track in gpx.tracks:
-        for segment in track.segments:        
-            for point in segment.points:
-                points.append((point.latitude, point.longitude))
-    
-    return gpx_df, points, activity_type'''
-
-
-
-
-
-
-import gpxpy
-import pandas as pd
-import numpy as np
-
-def process_gpx_to_df(file_path):
-    # Open and parse the file once
-    with open(file_path, 'r') as gpx_file:
-        gpx = gpxpy.parse(gpx_file)
-    
-    print(f'Parsing the following file: {file_path}')
-    
-    # Initialize lists for data
-    data = []
-    points = []
-    
-    # Extract the first track and segment
-    track = gpx.tracks[0]
-    segment = track.segments[0]
-    activity_type = track.type
-    
-    # Preallocate numpy arrays if the number of points is known
-    for point_idx, point in enumerate(segment.points):
-        longitude = point.longitude
-        latitude = point.latitude
-        elevation = point.elevation
-        time = point.time
-        speed = segment.get_speed(point_idx)  # assuming this isn't too slow
-        
-        # Append to data list
-        data.append([longitude, latitude, elevation, time, speed])
-        
-        # Append to points list for mapping
-        points.append((latitude, longitude))
-    
-    # Convert to DataFrame
-    columns = ['Longitude', 'Latitude', 'Altitude', 'Time', 'Speed']
-    gpx_df = pd.DataFrame(data, columns=columns)
-
-    return gpx_df, points, activity_type
-
-
-
-
-
-def calculate_stats_from_df(gpx_df):
-    # Initialize totals
-    total_distance = 0
-    elevation_gain = 0
-    elevation_loss = 0
-    
-    # Ensure DataFrame is not empty and has enough data
-    if len(gpx_df) < 2:
-        raise ValueError("DataFrame does not contain enough points to calculate statistics.")
-    
-    # Iterate over DataFrame rows
-    for i in range(1, len(gpx_df)):
-        try:
-            # Calculate distance between consecutive points
-            prev_lat, prev_lon = gpx_df.iloc[i-1].Latitude, gpx_df.iloc[i-1].Longitude
-            curr_lat, curr_lon = gpx_df.iloc[i].Latitude, gpx_df.iloc[i].Longitude
-            distance = geodesic((prev_lat, prev_lon), (curr_lat, curr_lon)).kilometers
-            total_distance += distance
-            
-            # Calculate elevation difference
-            prev_elevation = gpx_df.iloc[i-1]['Altitude']
-            curr_elevation = gpx_df.iloc[i]['Altitude']
-            elevation_diff = curr_elevation - prev_elevation
-            
-            # Update elevation gain and loss
-            if elevation_diff > 0:
-                elevation_gain += elevation_diff
-            elif elevation_diff < 0:
-                elevation_loss += abs(elevation_diff)
-                
-        except KeyError as e:
-            raise KeyError(f"Missing expected column in DataFrame: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Error processing data: {e}")
-
-    return {
-        'total_distance': round(total_distance, 1),
-        'elevation_gain': round(elevation_gain, 1),
-        'elevation_loss': round(elevation_loss, 1)
-    }
-
-
-
-
-def get_mid_of_trail(x: pd.DataFrame):
-    d={}
-    # Count files per trail (passed here by 'Name') and divide by 2 to get middle point
-    mid_point = x['Path'].count() / 2
-    #print('mid_point')
-    #print(mid_point)
-
-    if mid_point == 1:
-        mid_point_int = int(mid_point)
-        mid_gpx = x.sort_values('Date').iloc[mid_point_int].Path
-        marker = 'mid'
-    elif mid_point.is_integer():
-        mid_point_int = int(mid_point)
-        mid_gpx = x.sort_values('Date').iloc[mid_point_int-1].Path
-        marker = 'end'
-    # If a non-integer (e.g. 4.5) is returned as mid_point, it will be rounded up by math.ceil()
-    else:
-        mid_point_int = math.ceil(mid_point)
-        mid_gpx = x.sort_values('Date').iloc[mid_point_int-1].Path
-        marker = 'mid'
-    d['mid_gpx'] = mid_gpx
-    d['marker'] = marker
-    d['start_gpx'] = x.sort_values('Date').iloc[0].Path
-    d['end_gpx'] = x.sort_values('Date').iloc[-1].Path
-
-    return pd.Series(d, index=['mid_gpx', 'marker', 'start_gpx', 'end_gpx' ])
-
-
-
-
-def get_trail_summary(x: pd.DataFrame):
-    d = {}
-    d['Days on Camino'] = x['Date'].count()
-    d['Distance (km)'] = x['distance_km'].sum()
-    d['Elapsed Time (hours)'] = x['elapsed_time_sec'].sum() / 3600
-    d['Elevation Gain (m)'] = x['elevationGain'].sum()
-    d['Elevation Loss (m)'] = x['elevationLoss'].sum()    
-    
-    return pd.Series(d)
-
-
+# Own imports
+from cleanup_files import cleanup_old_backups
+import parse_gpx_files
 
 
 def read_csv_with_separators(file_path, dtype, usecols, separators=[',', ';']):
@@ -330,8 +99,8 @@ def process_gpx_file(args):
         print('Skipping this file due to it being EMPTY: ' + file_path)
         return None
 
-    df, points, activity = process_gpx_to_df(file_path)
-    stats = calculate_stats_from_df(df)
+    df, points, activity = parse_gpx_files.process_gpx_to_df(file_path)
+    stats = parse_gpx_files.calculate_stats_from_df(df)
     
     # Extract additional info from activity_df
     trail_info = activity_df.loc[activity_df.Path == file_path].iloc[0]
@@ -388,7 +157,7 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
         folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', 
                          attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC").add_to(mymap)
     
-    order_of_days_df = activity_df.groupby('Name').apply(get_mid_of_trail)
+    order_of_days_df = activity_df.groupby('Name').apply(parse_gpx_files.get_mid_of_trail)
 
     i = 0
     iteration = 1
@@ -679,6 +448,7 @@ def main():
         strava_commented_file_headers_df['Family'] = None
         
         # Save header line to CSV file
+        strava_export_file_with_comments = 'strava-comments'
         strava_commented_file_headers_df.head(0).to_csv(strava_base_path + strava_export_file_with_comments + '.csv', index=False)
         strava_commented_file_headers_df.head(0)
 
@@ -737,7 +507,7 @@ def main():
 
 
     # Add GPX filepath to merged file after it was extracted
-    strava_final_file_df['Path'] = strava_final_file_df['Path'].apply(remove_gz)
+    strava_final_file_df['Path'] = strava_final_file_df['Path'].apply(parse_gpx_files.remove_gz)
 
     # Rename date column to be consistent with Garmin data
     strava_final_file_df.rename(columns={'Time': 'Date'}, inplace=True)
@@ -758,7 +528,7 @@ def main():
 
 
     # Unzip GPX files
-    gz_extract(strava_base_path)
+    parse_gpx_files.gz_extract(strava_base_path)
     # Source: https://gist.github.com/kstreepy/a9800804c21367d5a8bde692318a18f5
 
 

@@ -3,22 +3,18 @@
 
 import pandas as pd
 import os
-import re
 import folium
-import gpxpy
 import shutil
-import gzip
 import math
 from collections import defaultdict
-import gc
 from pathlib import Path
 from IPython.display import IFrame, display
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
-
-# Own imports
 from cleanup_files import cleanup_old_backups
 import parse_gpx_files
+from collections import defaultdict
+
 
 
 def read_csv_with_separators(file_path, dtype, usecols, separators=[',', ';']):
@@ -40,12 +36,7 @@ def wikiloc_get_activity_name(gpx_file):
             name = elem.text
     return name
 
-
-from collections import defaultdict
-
-# Iterate over the 'OrderOfDays' column to count the number of trails per day
 def calculate_trails_per_day(df):
-    
     # Initialize a nested dictionary to store the counts
     trails_dict = defaultdict(lambda: defaultdict(int))
     
@@ -69,12 +60,11 @@ def calculate_trails_per_day(df):
     # Now you can access the counts for any trail name and day, e.g., trails_dict['Trail1'][2]
     return trails_dict
 
-# Function to apply a small offset to the location
 def offset_location(lat, lon):
     # Earth's radius in meters
     R = 6378137.0
 
-    offset_lat, offset_lon = (50, 50)  # Example offset
+    offset_lat, offset_lon = (50, 50)
 
     # Offset by latitude (in meters)
     d_lat = offset_lat / R
@@ -86,13 +76,6 @@ def offset_location(lat, lon):
     
     return new_lat, new_lon
 
-
-
-
-
-# In[68]:
-
-
 def process_gpx_file(args):
     file_path, activity_df = args
     if os.path.getsize(file_path) == 0:
@@ -102,7 +85,6 @@ def process_gpx_file(args):
     df, points, activity = parse_gpx_files.process_gpx_to_df(file_path)
     stats = parse_gpx_files.calculate_stats_from_df(df)
     
-    # Extract additional info from activity_df
     trail_info = activity_df.loc[activity_df.Path == file_path].iloc[0]
     trail_name = trail_info['Name']
     trail_day_name = trail_info['OrderOfDays']
@@ -123,26 +105,24 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
     pd.set_option('display.precision', 0)
     os.chdir(gpx_file_path)
 
-    
     trails_per_day = calculate_trails_per_day(activity_df)
     print('Tracks per day: ' + str(trails_per_day))
     
     # Prepare arguments for parallel processing
     args_list = [(file_path, activity_df) for file_path in gpx_files]
     
-    results = []
+    processed_files = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {executor.submit(process_gpx_file, args): args[0] for args in args_list}
         for future in as_completed(future_to_file):
-            result = future.result()
-            if result is not None:
-                results.append(result)
+            processed_file = future.result()
+            if processed_file is not None:
+                processed_files.append(processed_file)
     
-    # Sort results if necessary
-    results = sorted(results, key=lambda x: x['trail_day'])
+    processed_files = sorted(processed_files, key=lambda x: x['trail_day'])
     
     # Initialize the map
-    first_result = results[0]
+    first_result = processed_files[0]
     df = first_result['df']
     mymap = folium.Map(location=[df.Latitude.mean(), df.Longitude.mean()], zoom_start=zoom_level)
     
@@ -161,16 +141,16 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
 
     i = 0
     iteration = 1
-    for result in results:
-        file_path = result['file_path']
-        df = result['df']
-        points = result['points']
-        activity = result['activity']
-        stats = result['stats']
-        trail_name = result['trail_name']
-        trail_day_name = result['trail_day_name']
+    for processed_file in processed_files:
+        file_path = processed_file['file_path']
+        df = processed_file['df']
+        points = processed_file['points']
+        activity = processed_file['activity']
+        stats = processed_file['stats']
+        trail_name = processed_file['trail_name']
+        trail_day_name = processed_file['trail_day_name']
         print('trail day name' + trail_day_name)
-        trail_day = result['trail_day']
+        trail_day = processed_file['trail_day']
         trail_distance = stats['total_distance']
         elevation_gain = stats['elevation_gain']
         elevation_loss = stats['elevation_loss']
@@ -206,7 +186,7 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
 
         
         # Find out if a given gpx_file file belongs to a "main track" or an "additional track" (e.g. summit hike)
-        if iteration == 1 and trails_per_day[trail_name][trail_day] == 1: # Only one track on this day
+        if (iteration == 1) and (trails_per_day[trail_name][trail_day] == 1): # Only one track on this day
             is_main_track = True
         elif (iteration == 1) and (trails_per_day[trail_name][trail_day] != 1): # More than one track on this day
             is_main_track = True
@@ -239,8 +219,6 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
 
         print('Facts about trail ' + file_path + ': Name: ' + trail_day_name + ', Day: ' + str(trail_day) + ', Distance: ' + str(trail_distance))
 
-        
-        
         if plot_method=='poly_line':
             if file_path in order_of_days_df.start_gpx.to_list() and add_trail_info==True:
                 
@@ -250,7 +228,6 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
                 mymap.add_child(fg)
                 folium.PolyLine(points, color=activity_color, weight=4.5, opacity=.5).add_to(mymap).add_to(fg)
                 
-                #build starting marker
                 html_camino_start = """
                 Start of {trail_name}
                 """.format(trail_name=trail_name)
@@ -357,12 +334,12 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
             break;
             
     if show_minimap == True:
-        minimap = MiniMap(zoom_level_offset=-4)
+        minimap = MiniMap(zoom_level_offset=-4) # type: ignore
         mymap.add_child(minimap)
             
     #fullscreen option
     if fullscreen==True:
-        plugins.Fullscreen(
+        plugins.Fullscreen( # type: ignore
             position='topright',
             title='Expand me',
             title_cancel='Exit me',
@@ -371,12 +348,10 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
 
     folium.LayerControl(collapsed=True).add_to(mymap)
     print('Saving to map: ' + map_name)
-    mymap.save(map_name) # saves to html file for display below
+    mymap.save(map_name)
 
 
 def main():
-
-
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
     pd.set_option('display.max_colwidth', None)
@@ -400,7 +375,7 @@ def main():
     os.chdir(strava_base_path)
 
     # Create a backup
-    strava_export_file_backup = shutil.copyfile(strava_base_path + strava_export_file + '.csv',
+    shutil.copyfile(strava_base_path + strava_export_file + '.csv',
                                             strava_base_path + 'sicherungskopien/' + strava_export_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
 
     strava_export_file_dtypes = {'ActivityType': 'string', 'Filename': 'string', 'Latitude': 'float64', 'Longitude': 'float64', 'Comment': 'string'}
@@ -425,12 +400,7 @@ def main():
 
     print(strava_export_file_without_duplicates_df.head())
 
-
     strava_export_file_without_duplicates_df.to_csv(strava_base_path + strava_export_file + '-without-duplicates.csv', index=False)
-
-
-
-
 
     # Create first version of comment file, if it does not yet exist
     file_path = Path(strava_base_path + strava_merged_comment_file + '.csv')
@@ -522,17 +492,11 @@ def main():
 
 
 
-    # # Prepare GPX files
-
-    # In[63]:
-
+    #Prepare GPX files
 
     # Unzip GPX files
     parse_gpx_files.gz_extract(strava_base_path)
     # Source: https://gist.github.com/kstreepy/a9800804c21367d5a8bde692318a18f5
-
-
-    # In[64]:
 
 
     # Read final file
@@ -569,14 +533,13 @@ def main():
     strava_hiking_file_df = pd.read_csv(strava_base_path + strava_final_file + '-hiking.csv', sep=',', dtype = strava_export_file_with_comments_dtypes, usecols = ['Date', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'],)
 
 
-    mask_by_trail_family = strava_hiking_file_df.Name == ('Tauern Hoehenweg')
-    #mask_by_trail_family = strava_hiking_file_df.Family == ('Mehrtagestouren')
+    #mask_by_trail_family = strava_hiking_file_df.Name == ('Tauern Hoehenweg')
+    mask_by_trail_family = strava_hiking_file_df.Family == ('Mehrtagestouren')
 
     # Contains only path
     tracks_to_display = strava_hiking_file_df[mask_by_trail_family].sort_values(['Family', 'Name', 'Date']).Path.to_list()
     tracks_to_display_df = strava_hiking_file_df[mask_by_trail_family]
 
-    #mehrtagestouren_df = strava_hiking_df[mask_by_trail_family]
     # Set number of tracks to be displayed on the map
     # Pass an integer to display less
     numberOfTracks="all"

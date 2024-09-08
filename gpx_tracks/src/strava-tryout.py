@@ -126,24 +126,6 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
     data_from_gpx_file = first_result['df']
     mymap = folium.Map(location=[data_from_gpx_file.Latitude.mean(), data_from_gpx_file.Longitude.mean()], zoom_start=zoom_level)
     
-    # TO DO: Find the right attribution for world topo map
-    # TO DO: Do we need the other map_types?
-    '''
-    if map_type == 'regular':
-        folium.TileLayer('openstreetmap', name='OpenStreet Map').add_to(mymap)
-        folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', 
-                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", 
-                         name='Nat Geo Map').add_to(mymap)
-        folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
-                         name='World Topo Map').add_to(mymap)
-    elif map_type == 'terrain':
-        folium.TileLayer('Stamen Terrain').add_to(mymap)
-    elif map_type == 'nat_geo':
-        folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', 
-                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC").add_to(mymap)
-    '''
-    
     order_of_days_df = activity_df.groupby('Name').apply(parse_gpx_files.get_mid_of_trail)
 
     i = 0
@@ -168,32 +150,17 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
         lat_end = df.iloc[-1].Latitude
         long_end = df.iloc[-1].Longitude
 
-        # Determine activity color and icon
-        if activity == 'Cycling':
-            activity_color = 'green'
-            activity_icon = 'bicycle'
-        elif activity == 'Hiking':
-            activity_color = 'blue'
-            activity_icon = 'compass'
-        else:
-            activity_color = 'red'
-            activity_icon = 'rocket'
+        activity_color = 'blue'
+        activity_icon = 'compass'
 
-        # TO DO: Why are the tilelayers added here again?
+        # TO DO: Find the right attr for world topo map
         if i==0:
-            mymap = folium.Map( location=[ df.Latitude.mean(), df.Longitude.mean() ], zoom_start=zoom_level)
-            if map_type=='regular':
-                mymap = folium.Map( location=[ df.Latitude.mean(), df.Longitude.mean() ], zoom_start=zoom_level, tiles=None)
-                folium.TileLayer('openstreetmap', name='OpenStreet Map').add_to(mymap)
-                folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", name='Nat Geo Map').add_to(mymap)
-                folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
-                         name='World Topo Map').add_to(mymap)
-            elif map_type=='terrain':
-                mymap = folium.Map(location=[ df.Latitude.mean(), df.Longitude.mean() ], tiles='http://tile.stamen.com/terrain/{z}/{x}/{y}.jpg', attr="terrain-bcg", zoom_start=zoom_level)
-            elif map_type=='nat_geo':
-                mymap = folium.Map(location=[ df.Latitude.mean(), df.Longitude.mean() ], tiles='https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", zoom_start=zoom_level)
-
+            mymap = folium.Map( location=[ df.Latitude.mean(), df.Longitude.mean() ], zoom_start=zoom_level, tiles=None)
+            folium.TileLayer('openstreetmap', name='OpenStreet Map').add_to(mymap)
+            folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", name='Nat Geo Map').add_to(mymap)
+            folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+                        attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+                        name='World Topo Map').add_to(mymap)
         
         # Find out if a given gpx_file file belongs to a "main track" or an "additional track" (e.g. summit hike)
         if (iteration == 1) and (trails_per_day[trail_name][trail_day] == 1): # Only one track on this day
@@ -362,7 +329,6 @@ def  create_dataframe(strava_base_path, strava_merged_comment_file, strava_expor
     # https://github.com/evgeniyarbatov/strava2csv
     strava_export_file = 'gpx-file-strava'
     
-    
     # Define the directory containing the backup files
     backup_directory = strava_base_path + '/sicherungskopien'
 
@@ -371,20 +337,19 @@ def  create_dataframe(strava_base_path, strava_merged_comment_file, strava_expor
 
     os.chdir(strava_base_path)
 
-    # Create a backup
+    # Create a backup of Strava export file
     shutil.copyfile(strava_base_path + strava_export_file + '.csv',
                                             strava_base_path + 'sicherungskopien/' + strava_export_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
 
-    strava_export_file_dtypes = {'ActivityType': 'string', 'Filename': 'string', 'Latitude': 'float64', 'Longitude': 'float64', 'Comment': 'string'}
-
     # Read Strava export file
+    strava_export_file_dtypes = {'ActivityType': 'string', 'Filename': 'string', 'Latitude': 'float64', 'Longitude': 'float64', 'Comment': 'string'}
     strava_export_file_df = pd.read_csv(strava_base_path + strava_export_file + '.csv',
                             sep=',', header = None, dtype = strava_export_file_dtypes,
                             names=['Time',"ActivityType","Filename","Latitude","Longitude","Elevation","Cadence","Heartrate","Power"])
 
     print(f'Successfully read file {strava_export_file}')
 
-    # Drop entries that belong to the same activity
+    # Drop entries that belong to the same activity, hence, have the same filename
     strava_export_file_without_duplicates_df = strava_export_file_df.drop_duplicates(subset='Filename')
 
     # Rename columns for better accessibility
@@ -395,17 +360,18 @@ def  create_dataframe(strava_base_path, strava_merged_comment_file, strava_expor
                                 'Filename': 'Path'
                                 }, inplace=True)
 
-    print(strava_export_file_without_duplicates_df.head())
-
+    # Save Strava export file
     strava_export_file_without_duplicates_df.to_csv(strava_base_path + strava_export_file + '-without-duplicates.csv', index=False)
-
+    
+    # TO DO: Check if this is really not needed (validate if export file with comments is created successfully, original file is still stored in "backup" folder)
+    '''
     # Create first version of comment file, if it does not yet exist
     file_path = Path(strava_base_path + strava_merged_comment_file + '.csv')
 
     if file_path.exists():
-        print(f"A file including comments {file_path} exists, hence will not be created.")
+        print(f"A file including comments exists in path {file_path} , hence will not be created.")
     else:
-        print(f"A file including comments {file_path} does not exist, hence will be created.")
+        print(f"A file including comments does not exist in path {file_path}, hence will be created.")
 
         strava_commented_file_headers_df = strava_export_file_without_duplicates_df
         
@@ -417,35 +383,39 @@ def  create_dataframe(strava_base_path, strava_merged_comment_file, strava_expor
         # Save header line to CSV file
         strava_export_file_with_comments = 'strava-comments'
         strava_commented_file_headers_df.head(0).to_csv(strava_base_path + strava_export_file_with_comments + '.csv', index=False)
-        strava_commented_file_headers_df.head(0)
+    '''
+    # Read merged comment file
 
+    strava_merged_comment_file_path = strava_base_path + strava_merged_comment_file + '.csv'
 
-    # 1. Read merged comment file from previous run (CSV)
-    strava_export_file_with_comments_df = read_csv_with_separators(strava_base_path + strava_merged_comment_file + '.csv',
-                                                    strava_export_file_with_comments_dtypes, ['Time', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'])
-    print(f'Successfully read file {strava_merged_comment_file}')
-    print(strava_export_file_with_comments_df.head())
+    try:
+        if not os.path.exists(strava_merged_comment_file_path):
+            raise FileNotFoundError(f"File not found: {strava_merged_comment_file_path}")
+        strava_merged_comment_file_df = read_csv_with_separators(strava_merged_comment_file_path,
+                                                        strava_export_file_with_comments_dtypes, ['Time', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'])
+        print(f'Successfully read file {strava_merged_comment_file}')
 
-    # Create a backup
-    shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv',
-                                                            strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
+        print("Comment file will be merged with export file.")
 
-    # Merge with export file
-    if strava_export_file_with_comments_df.empty:
+        # Create a backup
+        shutil.copyfile(strava_merged_comment_file_path, strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
+
+        strava_merged_file_df = pd.merge(strava_export_file_without_duplicates_df,strava_merged_comment_file_df, on=["Path", "Time", "activityType"], how = "inner")
+        
+    except FileNotFoundError as e:
         print("The comment file is still empty. Only header names will be added.")
 
-        df2_with_headers = pd.DataFrame(columns=['Name', 'OrderOfDays', 'Family'])
-        # Combine DF1 with empty DF2's headers
-        strava_merged_file_df = pd.concat([strava_export_file_without_duplicates_df, df2_with_headers], axis=1)
-    else:
-        print("Comment file will be merged with export file.")
-        # Perform the merge if DF2 is not empty
-        strava_merged_file_df = pd.merge(strava_export_file_without_duplicates_df,strava_export_file_with_comments_df, on=["Path", "Time", "activityType"], how = "inner")
-        print(strava_merged_file_df.head())
-        
+        headers = pd.DataFrame(columns=['Name', 'OrderOfDays', 'Family'])
+        strava_merged_file_df = pd.concat([strava_export_file_without_duplicates_df, headers], axis=1)
+
+        # TO DO: If the file was only created, no comments are there, hence the creation of the map will fail if a filter is set
+        # How to prevent this failure?
+
     strava_merged_file_df.to_csv(strava_base_path + strava_merged_comment_file + '.csv', index=False)
 
-    # 3. Create a backup of merged file (CSV)
+        
+
+    # Create a backup of merged file
     shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv', strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
 
 

@@ -14,7 +14,7 @@ from datetime import datetime
 from cleanup_files import cleanup_old_backups
 import parse_gpx_files
 from collections import defaultdict
-
+from folium.plugins import Fullscreen
 
 
 def read_csv_with_separators(file_path, dtype, usecols, separators=[',', ';']):
@@ -101,7 +101,7 @@ def process_gpx_file(args):
         'trail_day': trail_day
     }
 
-def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='poly_line', zoom_level=12, add_trail_info=False, mark_track_terminals=False, track_terminal_radius_size=2000, show_minimap=False, map_type='terrain', fullscreen=False, number_of_tracks="all", max_workers=20):
+def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='poly_line', zoom_level=12, add_trail_info=False, mark_track_terminals=False, track_terminal_radius_size=2000, show_minimap=False, map_type='terrain', fullscreen=True, number_of_tracks="all", max_workers=20):
     pd.set_option('display.precision', 0)
     os.chdir(gpx_file_path)
 
@@ -112,6 +112,7 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
     args_list = [(file_path, activity_df) for file_path in gpx_files]
     
     processed_files = []
+
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {executor.submit(process_gpx_file, args): args[0] for args in args_list}
         for future in as_completed(future_to_file):
@@ -121,21 +122,27 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
     
     processed_files = sorted(processed_files, key=lambda x: x['trail_day'])
     
-    # Initialize the map
     first_result = processed_files[0]
-    df = first_result['df']
-    mymap = folium.Map(location=[df.Latitude.mean(), df.Longitude.mean()], zoom_start=zoom_level)
+    data_from_gpx_file = first_result['df']
+    mymap = folium.Map(location=[data_from_gpx_file.Latitude.mean(), data_from_gpx_file.Longitude.mean()], zoom_start=zoom_level)
     
+    # TO DO: Find the right attribution for world topo map
+    # TO DO: Do we need the other map_types?
+    '''
     if map_type == 'regular':
         folium.TileLayer('openstreetmap', name='OpenStreet Map').add_to(mymap)
         folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', 
                          attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", 
                          name='Nat Geo Map').add_to(mymap)
+        folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+                         name='World Topo Map').add_to(mymap)
     elif map_type == 'terrain':
         folium.TileLayer('Stamen Terrain').add_to(mymap)
     elif map_type == 'nat_geo':
         folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', 
                          attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC").add_to(mymap)
+    '''
     
     order_of_days_df = activity_df.groupby('Name').apply(parse_gpx_files.get_mid_of_trail)
 
@@ -172,13 +179,16 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
             activity_color = 'red'
             activity_icon = 'rocket'
 
+        # TO DO: Why are the tilelayers added here again?
         if i==0:
             mymap = folium.Map( location=[ df.Latitude.mean(), df.Longitude.mean() ], zoom_start=zoom_level)
             if map_type=='regular':
                 mymap = folium.Map( location=[ df.Latitude.mean(), df.Longitude.mean() ], zoom_start=zoom_level, tiles=None)
                 folium.TileLayer('openstreetmap', name='OpenStreet Map').add_to(mymap)
                 folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC", name='Nat Geo Map').add_to(mymap)
-
+                folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+                         attr="Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+                         name='World Topo Map').add_to(mymap)
             elif map_type=='terrain':
                 mymap = folium.Map(location=[ df.Latitude.mean(), df.Longitude.mean() ], tiles='http://tile.stamen.com/terrain/{z}/{x}/{y}.jpg', attr="terrain-bcg", zoom_start=zoom_level)
             elif map_type=='nat_geo':
@@ -240,9 +250,6 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
                       radius=3, rotation=0, popup=html_camino_start).add_to(mymap).add_to(fg)
 
             elif file_path in order_of_days_df.mid_gpx.to_list() and add_trail_info==True:
-                #camino_summary = activity_df.groupby('Name').apply(get_trail_summary)
-                
-                #print('summary: ' + str(camino_summary))
                 #add 'mid' or 'end' marker, depending on how many tracks there are on camino (to approximate midpoint)
                 marker_location = order_of_days_df.loc[order_of_days_df.mid_gpx==file_path,'marker'][0]
                 #mask = (camino_summary.index==Name)
@@ -258,16 +265,11 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
 
                 """.format(Name=trail_name)
 
-                
-                
-
                 #html = html_Name + """<div align="center">""" + camino_summary_for_icon.to_html(justify='center', header=False, index=True, index_names=False, col_space=300, classes='table-condensed table-responsive table-success') + """</div>""" #
                 html = html_Name + """<div align="center">"""
                 #(justify='center', header=False, index=True, index_names=False, col_space=300, classes='table-condensed table-responsive table-success') + """</div>""" #
 
-
                 popup = folium.Popup(html, max_width=300)
-                
 
                 if marker_location=='mid':
                     #get midpoint long / lad
@@ -337,9 +339,8 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
         minimap = MiniMap(zoom_level_offset=-4) # type: ignore
         mymap.add_child(minimap)
             
-    #fullscreen option
     if fullscreen==True:
-        plugins.Fullscreen( # type: ignore
+        Fullscreen(
             position='topright',
             title='Expand me',
             title_cancel='Exit me',
@@ -350,22 +351,18 @@ def create_map(gpx_file_path, gpx_files, activity_df, map_name, plot_method='pol
     print('Saving to map: ' + map_name)
     mymap.save(map_name)
 
-
-def main():
+def set_pandas_options():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
     pd.set_option('display.max_colwidth', None)
 
+def  create_dataframe(strava_base_path, strava_merged_comment_file, strava_export_file_with_comments_dtypes):
     # This is the file that comes from the Strava export tools
     # https://github.com/liskin/strava-offline
     # https://github.com/evgeniyarbatov/strava2csv
     strava_export_file = 'gpx-file-strava'
-
-    # This is the file where new activities from the Strava export file above are merged into and manual comments are added
-    strava_merged_comment_file = 'strava-export-merged-with-comments-PUT-COMMENTS-HERE'
-
-    strava_base_path = '/Users/ronja/Documents/Dateien/tech/gpx/source-data/strava/'
-
+    
+    
     # Define the directory containing the backup files
     backup_directory = strava_base_path + '/sicherungskopien'
 
@@ -422,7 +419,6 @@ def main():
         strava_commented_file_headers_df.head(0).to_csv(strava_base_path + strava_export_file_with_comments + '.csv', index=False)
         strava_commented_file_headers_df.head(0)
 
-    strava_export_file_with_comments_dtypes = {'Path': 'string', 'activityType': 'string', 'Name': 'string', 'OrderOfDays': 'string', 'Family': 'string'}
 
     # 1. Read merged comment file from previous run (CSV)
     strava_export_file_with_comments_df = read_csv_with_separators(strava_base_path + strava_merged_comment_file + '.csv',
@@ -431,17 +427,10 @@ def main():
     print(strava_export_file_with_comments_df.head())
 
     # Create a backup
-    strava_export_file_with_comments_backup = shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv',
+    shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv',
                                                             strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
 
-
-
-
-    # In[61]:
-
-
-    # 2. Merge with export file
-
+    # Merge with export file
     if strava_export_file_with_comments_df.empty:
         print("The comment file is still empty. Only header names will be added.")
 
@@ -457,24 +446,31 @@ def main():
     strava_merged_file_df.to_csv(strava_base_path + strava_merged_comment_file + '.csv', index=False)
 
     # 3. Create a backup of merged file (CSV)
-    strava_export_file_with_comments_backup = shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv', strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
+    shutil.copyfile(strava_base_path + strava_merged_comment_file + '.csv', strava_base_path + 'sicherungskopien/' + strava_merged_comment_file + '-' + datetime.now().strftime("%Y-%m-%d-%H-%M") +'.csv')
 
 
+def main():
+    set_pandas_options()
 
-    # In[62]:
+    strava_base_path = '/Users/ronja/Documents/Dateien/tech/gpx/source-data/strava/'
+    # This is the file where new activities from the Strava export file above are merged into and manual comments are added
+    strava_merged_comment_file_name = 'strava-export-merged-with-comments-PUT-COMMENTS-HERE'
 
+    strava_export_file_with_comments_dtypes = {'Path': 'string', 'activityType': 'string', 'Name': 'string', 'OrderOfDays': 'string', 'Family': 'string'}
 
+    create_dataframe(strava_base_path, strava_merged_comment_file_name, strava_export_file_with_comments_dtypes)
+
+    
     # 4. Manually put in comments
 
     # 5. Read comment (merged) file again (CSV) -> final df
-    strava_final_file_df = read_csv_with_separators(strava_base_path + strava_merged_comment_file + '.csv',
+    strava_final_file_df = read_csv_with_separators(strava_base_path + strava_merged_comment_file_name + '.csv',
                                                     strava_export_file_with_comments_dtypes,['Time', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'])
 
     # Convert to datetime after reading CSV because not all times are in the exact same format
     # Format 1: 2021-09-03T21:37:01.973Z
     # Format 2: 2013-07-15T15:28:07Z
     strava_final_file_df['Time'] = pd.to_datetime(strava_final_file_df['Time'], format='ISO8601')
-
 
     # Add GPX filepath to merged file after it was extracted
     strava_final_file_df['Path'] = strava_final_file_df['Path'].apply(parse_gpx_files.remove_gz)
@@ -489,22 +485,16 @@ def main():
     # Store after modifications
     strava_final_file_df.to_csv(strava_base_path + strava_final_file + '.csv', index=False)
 
-
-
-
-    #Prepare GPX files
-
     # Unzip GPX files
     parse_gpx_files.gz_extract(strava_base_path)
     # Source: https://gist.github.com/kstreepy/a9800804c21367d5a8bde692318a18f5
-
 
     # Read final file
     strava_merged_file_final = pd.read_csv(strava_base_path + strava_final_file + '.csv', sep=',', dtype = strava_export_file_with_comments_dtypes, usecols = ['Date', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'],)
 
     print(strava_merged_file_final.head())
     # Only take hikes
-    mask = strava_merged_file_final.activityType == ('hiking')
+    mask = strava_merged_file_final.activityType == ('hiking') # make this parameterizable
     strava_hiking_df = strava_merged_file_final[mask]
     strava_hiking_df.info()
 
@@ -516,25 +506,11 @@ def main():
     strava_hiking_df.to_csv(strava_base_path + strava_final_file + '-hiking.csv')
 
 
-
-    #mehrtagestouren=filtered_trails_file[filtered_trails_file.Family=='Mehrtagestour'].sort_values(['Family', 'Name', 'Date']).Path.to_list()
-
-    # Only take hikes
-    #mask = strava_merged_file_final.activityType == ('hiking')
-    #strava_hiking_df = strava_merged_file_final[mask]
-    #strava_hiking_df.head()
-
-    # Save filtered file as CSV
-    #strava_hiking_df.to_csv(strava_base_path + strava_final_file + '-hiking.csv')
-
-    # Sort file
-    #strava_hiking_sorted = strava_hiking_df.sort_values(['Family','Name','Date']).Path.to_list()
-
     strava_hiking_file_df = pd.read_csv(strava_base_path + strava_final_file + '-hiking.csv', sep=',', dtype = strava_export_file_with_comments_dtypes, usecols = ['Date', 'activityType', 'Path', 'Name', 'OrderOfDays', 'Family'],)
 
 
-    #mask_by_trail_family = strava_hiking_file_df.Name == ('Tauern Hoehenweg')
-    mask_by_trail_family = strava_hiking_file_df.Family == ('Mehrtagestouren')
+    mask_by_trail_family = strava_hiking_file_df.Name == ('Tauern Hoehenweg')
+    #mask_by_trail_family = strava_hiking_file_df.Family == ('Mehrtagestouren')
 
     # Contains only path
     tracks_to_display = strava_hiking_file_df[mask_by_trail_family].sort_values(['Family', 'Name', 'Date']).Path.to_list()
@@ -550,9 +526,7 @@ def main():
 
     create_map(gpx_file_path, tracks_to_display, tracks_to_display_df, map_name, plot_method='poly_line', zoom_level=6, add_trail_info=True, mark_track_terminals=True, track_terminal_radius_size=100, map_type='regular', number_of_tracks=numberOfTracks)
 
-
     print(map_name)
-
 
     # Set working directory to base_path
     os.chdir(base_path)
